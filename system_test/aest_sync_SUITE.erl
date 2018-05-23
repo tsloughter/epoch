@@ -25,6 +25,7 @@
     stop_node/3,
     connect_node/3, disconnect_node/3,
     wait_for_value/4,
+    wait_for_startup/3,
     get_block/2,
     request/3
 ]).
@@ -107,9 +108,9 @@ init_per_suite(Config) ->
     %% Some parameters depend on the speed and capacity of the docker containers:
     %% timers must be less than gen_server:call timeout.
     [
-        {blocks_per_second, 3},
-        {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-        {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
+        {blocks_per_second,  3},
+        {node_startup_time,  20000}, % Time may take to get the node to respond to http
+        {node_shutdown_time, 20000}  % Time it may take to stop node cleanly
     |Config].
 
 init_per_testcase(quick_start_stop, Config) ->
@@ -131,7 +132,7 @@ end_per_suite(_Config) -> ok.
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
     Length = 20,
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
+    NodeStartupTime = proplists:get_value(startup_timeout, Cfg),
 
     Compatible = "aeternity/epoch:local", %% Latest version it should be compatible with
                                           %% Change if comptibility with previous version
@@ -200,7 +201,7 @@ new_node_joins_network(Cfg) ->
 %% that we had in the chain before stopping: data is persistent.
 docker_keeps_data(Cfg) ->
     Length = 20,
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
+    NodeStartupTime = proplists:get_value(startup_timeout, Cfg),
     NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
 
     setup_nodes([?STANDALONE_NODE], Cfg),
@@ -282,7 +283,7 @@ docker_keeps_data(Cfg) ->
 %% create a fork with higher difficulty in the time Node1 restarts.
 stop_and_continue_sync(Cfg) ->
     BlocksPerSecond = proplists:get_value(blocks_per_second, Cfg),
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
+    NodeStartupTime = proplists:get_value(startup_timeout, Cfg),
 
     %% Create a chain long enough to need 10 seconds to fetch it
     Length = BlocksPerSecond * 30,
@@ -438,13 +439,15 @@ net_split_recovery(Cfg) ->
     ok.
 
 quick_start_stop(Cfg) ->
-    setup_nodes(cluster([n1, n2], #{}), Cfg),
-    start_node(n2, Cfg),
-    start_node(n1, Cfg),
+    Nodes = [n1, n2],
+    setup_nodes(cluster(Nodes, #{}), Cfg),
+    [start_node(N, Cfg) || N <- Nodes],
+    Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
     stop_node(n2, 2000, Cfg),
     timer:sleep(2000),
     start_node(n2, Cfg),
-    ok.
+    NewBlocks = wait_for_startup(Nodes, 5, Cfg),
+    ?assertEqual(Blocks, NewBlocks).
 
 %% helper functions
 
