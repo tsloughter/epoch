@@ -198,16 +198,17 @@ identity_contract(Config) ->
     
     %% Mine block.
     NodeName = proplists:get_value(node_name, Config),
-    {ok, [Cblock]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    {ok, [_Cblock]} = aecore_suite_utils:mine_blocks(NodeName, 1),
 
     %% Mine some blocks.
     aecore_suite_utils:mine_blocks(NodeName, 2),
+    {ok, 200, _} = get_tx(CtxA, json),
 
     %% Call the contract in another transaction.
 
     ContractPubkey = aect_contracts:compute_contract_pubkey(APubkey, ANonce),
 
-    ContractPubkeyHash = aec_base58c:encode(transaction, ContractPubkey),
+    ContractPubkeyHash = aec_base58c:encode(contract_pubkey, ContractPubkey),
     
     ct:pal("Ckey ~p\n", [ContractPubkey]),
     ct:pal("Ckeyhash ~p\n", [ContractPubkeyHash]),
@@ -232,14 +233,18 @@ identity_contract(Config) ->
 				contract => ContractPubkey,
                                 call_data => DecodedCallData}),
 
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
     %% Create call transaction and sign
     {ok, 200, #{<<"tx_hash">> := CtxB}} = sign_and_post_call_tx(BPrivkey,
 							       ContractCallDecoded),
     
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]), % not empty
     ct:pal("Ctx ~p\n", [CtxB]),
 
     %% Mine a block
     aecore_suite_utils:mine_blocks(NodeName, 2),
+    {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := BlockHash}}} = get_tx(CtxB, json),
+    true = BlockHash =/= <<"none">>,
 
     ok.
 
