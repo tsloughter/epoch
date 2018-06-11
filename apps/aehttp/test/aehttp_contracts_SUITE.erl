@@ -23,6 +23,7 @@
 %% test case exports
 %% external endpoints
 -export([
+	 spending_1/1,
 	 identity_contract/1,
 	 dutch_auction_contract_1/1,
 	 dutch_auction_contract_2/1
@@ -35,19 +36,18 @@
 
 all() ->
     [
-     {group, all_endpoints}
+     {group, contracts}
     ].
 
 groups() ->
     [
-     {all_endpoints, [sequence], [{group, contracts}
-                                  ]},
      {contracts, [sequence],
       [
-       identity_contract,
-       identity_contract,
-       dutch_auction_contract_1,
-       dutch_auction_contract_2
+       spending_1
+       %% identity_contract,
+       %% identity_contract,
+       %% dutch_auction_contract_1,
+       %% dutch_auction_contract_2
       ]}
     ].
 
@@ -76,8 +76,6 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(all_endpoints, Config) ->
-    Config;
 init_per_group(contracts, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
@@ -87,11 +85,13 @@ init_per_group(contracts, Config) ->
     {APubkey, APrivkey} = generate_key_pair(),
     {BPubkey, BPrivkey} = generate_key_pair(),
     {CPubkey, CPrivkey} = generate_key_pair(),
+    {DPubkey, DPrivkey} = generate_key_pair(),
     AStartAmt = 50,
     BStartAmt = 50,
     CStartAmt = 50,
+    DStartAmt = 50,
     Fee = 1,
-    BlocksToMine = 2,				%Just a few
+    BlocksToMine = 1,				%Just a few
 
     %% Mine someblocks
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
@@ -100,11 +100,13 @@ init_per_group(contracts, Config) ->
     {ok, 200, _} = post_spend_tx(APubkey, AStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(BPubkey, BStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(CPubkey, CStartAmt, Fee),
+    {ok, 200, _} = post_spend_tx(DPubkey, DStartAmt, Fee),
     {ok, [Block]} = aecore_suite_utils:mine_blocks(NodeName, 1),
-    [_Spend1, _Spend2, _Spend3] = aec_blocks:txs(Block),
+    [_Spend1, _Spend2, _Spend3, _Spend4] = aec_blocks:txs(Block),
     assert_balance(APubkey, AStartAmt),
     assert_balance(BPubkey, BStartAmt),
     assert_balance(CPubkey, CStartAmt),
+    assert_balance(DPubkey, DStartAmt),
     %% Save account information.
     Accounts = #{acc_a => #{pub_key => APubkey,
 			    priv_key => APrivkey,
@@ -114,8 +116,10 @@ init_per_group(contracts, Config) ->
 			    start_amt => BStartAmt},
 		 acc_c => #{pub_key => CPubkey,
 			    priv_key => CPrivkey,
-			    start_amt => CStartAmt}},
-
+			    start_amt => CStartAmt},
+		 acc_d => #{pub_key => DPubkey,
+			    priv_key => DPrivkey,
+			    start_amt => DStartAmt}},
     [{accounts,Accounts},{node_name,NodeName}|Config];
 init_per_group(_Group, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
@@ -146,6 +150,74 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
+
+%% spending_1(Config)
+%%  Test case for experimenting with spending between accounts.
+%%  Some results:
+%%  - get_balance_at_top/0 seems really weird
+
+spending_1(Config) ->
+    NodeName = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APubkey,
+		 priv_key := APrivkey},
+      acc_b := #{pub_key := BPubkey,
+		 priv_key := BPrivkey}} = proplists:get_value(accounts, Config),
+
+    %% Check initial balances.
+    {ok,200,#{<<"balance">> := BTop0}} = get_balance_at_top(),
+    ABal0 = get_balance(APubkey),
+    BBal0 = get_balance(BPubkey),
+    ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
+
+    %% Add tokens to both accounts.
+    {ok,200,_P0} = post_spend_tx(APubkey, 500, 1),
+    {ok,200,_P1} = post_spend_tx(BPubkey, 500, 1),
+    %%ct:pal("Spend ~p, ~p\n", [P0,P1]),
+
+    {ok, [_Block]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+
+    %% Check balances after mining.
+    ABal2 = get_balance(APubkey),
+    BBal2 = get_balance(BPubkey),
+    ct:pal("Balances 1: ~p, ~p\n", [ABal2,BBal2]),
+
+    %% Transfer money from Alice to Bert.
+    spend_tokens(APubkey, BPubkey, 200, 5, 1),
+    aecore_suite_utils:mine_blocks(NodeName, 1),
+    
+    %% Check balances after sending.
+    ABal3 = get_balance(APubkey),
+    BBal3 = get_balance(BPubkey),
+    ct:pal("Balances 2: ~p, ~p\n", [ABal3,BBal3]),
+
+    %% Show the initial and final balances, whatever they are.
+    {ok,200,#{<<"balance">> := BTop1}} = get_balance_at_top(),
+    ct:pal("Balance at top: ~p, ~p, ~p \n", [BTop0,BTop1,BTop1-BTop0]),
+
+    ok.
+    
+get_balance(Pubkey) ->
+    Addr = aec_base58c:encode(account_pubkey, Pubkey),
+    {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(Addr),
+    Balance.
+
+spend_tokens(Sender, Recip, Amount, Fee, _Nonce) ->
+    %% Generate a nonce.
+    {ok,Use} = rpc(aec_next_nonce, pick_for_account, [Sender]),
+    Params = #{sender => Sender, %aec_base58c:encode(account_pubkey, Sender),
+	       recipient => Recip, %aec_base58c:encode(account_pubkey, Recip),
+	       amount => Amount,
+	       fee => Fee,
+	       nonce => Use,
+	       payload => <<"spending">>},
+    {ok, UnsignedTx} = aec_spend_tx:new(Params),
+    {ok,SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
+    SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
+    %% Check that we get the correct hash.
+    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
+    TxHash.
 
 identity_contract(Config) ->
     %% Get account information.
@@ -233,18 +305,21 @@ identity_contract(Config) ->
 				contract => ContractPubkey,
                                 call_data => DecodedCallData}),
 
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    {ok, P1} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    ct:pal("P1 ~p\n", [P1]),
     %% Create call transaction and sign
     {ok, 200, #{<<"tx_hash">> := CtxB}} = sign_and_post_call_tx(BPrivkey,
 							       ContractCallDecoded),
-    
-    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]), % not empty
     ct:pal("Ctx ~p\n", [CtxB]),
+
+    {ok, P2} = rpc(aec_tx_pool, peek, [infinity]), % not empty
+    ct:pal("P2 ~p\n", [P2]),
 
     %% Mine a block
     aecore_suite_utils:mine_blocks(NodeName, 2),
     {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := BlockHash}}} = get_tx(CtxB, json),
-    true = BlockHash =/= <<"none">>,
+    %%true = BlockHash =/= <<"none">>,
+    ct:pal("BlockHash ~p\n", [BlockHash]),
 
     ok.
 
@@ -497,9 +572,9 @@ get_contract_call_compute(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/call/compute", Data).
 
-%% get_spend(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/spend", Data).
+get_spend(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/spend", Data).
 
 %% get_name_preclaim(Data) ->
 %%     Host = external_address(),
