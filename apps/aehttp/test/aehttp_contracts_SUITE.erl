@@ -24,9 +24,12 @@
 %% external endpoints
 -export([
 	 spending_1/1,
+	 spending_2/1,
+	 spending_3/1,
 	 identity_contract/1,
 	 dutch_auction_contract_1/1,
-	 dutch_auction_contract_2/1
+	 dutch_auction_contract_2/1,
+	 null/1
 	]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -43,11 +46,14 @@ groups() ->
     [
      {contracts, [sequence],
       [
-       spending_1
-       %% identity_contract,
+       spending_1,
+       spending_2,
+       spending_3,
+       %% identity_contract
        %% identity_contract,
        %% dutch_auction_contract_1,
-       %% dutch_auction_contract_2
+       %% dutch_auction_contract_2,
+       null
       ]}
     ].
 
@@ -96,7 +102,7 @@ init_per_group(contracts, Config) ->
     %% Mine someblocks
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
 				   BlocksToMine),
-    %% Add 3 accounts and mine
+    %% Add 4 accounts and mine
     {ok, 200, _} = post_spend_tx(APubkey, AStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(BPubkey, BStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(CPubkey, CStartAmt, Fee),
@@ -122,11 +128,11 @@ init_per_group(contracts, Config) ->
 			    start_amt => DStartAmt}},
     [{accounts,Accounts},{node_name,NodeName}|Config];
 init_per_group(_Group, Config) ->
+    NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    aecore_suite_utils:connect(NodeName),
     ToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ToMine),
+    aecore_suite_utils:mine_blocks(NodeName, ToMine),
     Config.
 
 end_per_group(all_endpoints, _Config) ->
@@ -151,72 +157,214 @@ end_per_testcase(_Case, Config) ->
 %% Test cases
 %% ============================================================
 
+%% null(Config)
+%%  Does nothing an always succeeds.
+
+null(_Config) ->
+    ok.
+
 %% spending_1(Config)
-%%  Test case for experimenting with spending between accounts.
-%%  Some results:
-%%  - get_balance_at_top/0 seems really weird
+%%  A simple test of tokens from acc_a to acc_b.
 
 spending_1(Config) ->
     NodeName = proplists:get_value(node_name, Config),
     %% Get account information.
     #{acc_a := #{pub_key := APubkey,
 		 priv_key := APrivkey},
-      acc_b := #{pub_key := BPubkey,
-		 priv_key := BPrivkey}} = proplists:get_value(accounts, Config),
+      acc_b := #{pub_key := BPubkey}} = proplists:get_value(accounts, Config),
+
+    %% ct:pal("Top 1 ~p\n", [get_top()]),
 
     %% Check initial balances.
-    {ok,200,#{<<"balance">> := BTop0}} = get_balance_at_top(),
     ABal0 = get_balance(APubkey),
     BBal0 = get_balance(BPubkey),
     ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
 
     %% Add tokens to both accounts.
-    {ok,200,_P0} = post_spend_tx(APubkey, 500, 1),
-    {ok,200,_P1} = post_spend_tx(BPubkey, 500, 1),
-    %%ct:pal("Spend ~p, ~p\n", [P0,P1]),
+    {ok,200,_} = post_spend_tx(APubkey, 500, 1),
+    {ok,200,_} = post_spend_tx(BPubkey, 500, 1),
+    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
 
-    {ok, [_Block]} = aecore_suite_utils:mine_blocks(NodeName, 1),
-
-    %% Check balances after mining.
-    ABal2 = get_balance(APubkey),
-    BBal2 = get_balance(BPubkey),
-    ct:pal("Balances 1: ~p, ~p\n", [ABal2,BBal2]),
+    %% Get balances after mining.
+    ABal1 = get_balance(APubkey),
+    BBal1 = get_balance(BPubkey),
+    ct:pal("Balances 1: ~p, ~p\n", [ABal1,BBal1]),
 
     %% Transfer money from Alice to Bert.
-    spend_tokens(APubkey, BPubkey, 200, 5, 1),
-    aecore_suite_utils:mine_blocks(NodeName, 1),
+    TxHash = spend_tokens(APubkey, APrivkey, BPubkey, 200, 5),
+    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
     
-    %% Check balances after sending.
-    ABal3 = get_balance(APubkey),
-    BBal3 = get_balance(BPubkey),
-    ct:pal("Balances 2: ~p, ~p\n", [ABal3,BBal3]),
+    %% ct:pal("Top 2 ~p\n", [get_top()]),
 
-    %% Show the initial and final balances, whatever they are.
-    {ok,200,#{<<"balance">> := BTop1}} = get_balance_at_top(),
-    ct:pal("Balance at top: ~p, ~p, ~p \n", [BTop0,BTop1,BTop1-BTop0]),
+    %% Check that tx has succeeded.
+    ?assert(tx_in_block(TxHash)),
+
+    %% Check balances after sending.
+    ABal2 = get_balance(APubkey),
+    BBal2 = get_balance(BPubkey),
+    ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
+
+    %% Check that the balances are correct, don't forget the fee.
+    ABal2 = ABal1 - 200 - 5,
+    BBal2 = BBal1 + 200,
 
     ok.
+
+%% spending_2(Config)
+%%  A simple test of tokens from acc_a to acc_b. There are not enough
+%%  tokens in acc_a so tx suspends until TTL runs out.
+
+spending_2(Config) ->
+    NodeName = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APubkey,
+		 priv_key := APrivkey},
+      acc_b := #{pub_key := BPubkey}} = proplists:get_value(accounts, Config),
+
+    %% Check initial balances.
+    ABal0 = get_balance(APubkey),
+    BBal0 = get_balance(BPubkey),
+    ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
+
+    %% Add tokens to both accounts.
+    %% {ok,200,_} = post_spend_tx(APubkey, 500, 1),
+    %% {ok,200,_} = post_spend_tx(BPubkey, 500, 1),
+    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+
+    %% Get balances after mining.
+    ABal1 = get_balance(APubkey),
+    BBal1 = get_balance(BPubkey),
+    ct:pal("Balances 1: ~p, ~p\n", [ABal1,BBal1]),
+
+    {ok,200,#{<<"height">> := Height}} = get_top(),
+    ct:pal("Height ~p\n", [Height]),
+
+    %% Transfer money from Alice to Bert, but more than Alice has.
+    TTL =  #{ttl => Height + 2},
+    TxHash = spend_tokens(APubkey, APrivkey, BPubkey, ABal1 + 100, 5, TTL),
+    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
     
+    %% Check that tx has failed.
+    ct:pal("TxHash1 ~p\n", [tx_in_block(TxHash)]),
+
+    %% Check that there has been no transfer.
+    ABal2 = get_balance(APubkey),
+    BBal2 = get_balance(BPubkey),
+    ABal2 = ABal1,
+    BBal2 = BBal1,
+    ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
+
+    %% Wait until TTL has been passed.
+    {ok,[_,_]} = aecore_suite_utils:mine_blocks(NodeName, 2),
+    
+    %% Check that tx has failed.
+    ct:pal("TxHash2 ~p\n", [tx_in_block(TxHash)]),
+
+    ok.
+
+%% spending_3(Config)
+%%  A simple test of tokens from acc_a to acc_b. There are not enough
+%%  tokens in acc_a so tx suspends until acc_a gets enough.
+
+spending_3(Config) ->
+    NodeName = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APubkey,
+		 priv_key := APrivkey},
+      acc_b := #{pub_key := BPubkey}} = proplists:get_value(accounts, Config),
+
+    %% Check initial balances.
+    ABal0 = get_balance(APubkey),
+    BBal0 = get_balance(BPubkey),
+    ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
+
+    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+
+    %% Get balances after mining.
+    ABal1 = get_balance(APubkey),
+    BBal1 = get_balance(BPubkey),
+    ct:pal("Balances 1: ~p, ~p\n", [ABal1,BBal1]),
+
+    %% Transfer money from Alice to Bert, but more than Alice has.
+    TxHash = spend_tokens(APubkey, APrivkey, BPubkey, ABal1 + 200, 5),
+    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    
+    %% Check that tx has failed.
+    ?assertNot(tx_in_block(TxHash)),
+
+    %% Check that there has been no transfer.
+    ABal2 = get_balance(APubkey),
+    BBal2 = get_balance(BPubkey),
+    ABal2 = ABal1,
+    BBal2 = BBal1,
+    ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
+
+    %% Now we add enough tokens to acc_a so it can do the spend tx.
+    {ok,200,_} = post_spend_tx(APubkey, 500, 1),
+    {ok,[_,_]} = aecore_suite_utils:mine_blocks(NodeName, 2),
+
+    %% Check the balance to see what happened.
+    ABal3 = get_balance(APubkey),
+    BBal3 = get_balance(BPubkey),
+    ct:pal("Balances 3: ~p, ~p\n", [ABal3,BBal3]),
+
+    %% Check that tx has succeeded.
+    ?assert(tx_in_block(TxHash)),
+
+    ok.
+
+tx_in_block(TxHash) ->
+    {ok,200,#{<<"transaction">> := #{<<"block_hash">> := BlockHash}}} =
+	get_tx(TxHash, json),
+    BlockHash =/= <<"none">>.
+
 get_balance(Pubkey) ->
     Addr = aec_base58c:encode(account_pubkey, Pubkey),
-    {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(Addr),
+    {ok,200,#{<<"balance">> := Balance}} = get_balance_at_top(Addr),
     Balance.
 
-spend_tokens(Sender, Recip, Amount, Fee, _Nonce) ->
+ensure_balance(Pubkey, NewBalance) ->
+    Balance = get_balance(Pubkey),              %Get current balance
+    if Balance >= NewBalance ->                 %Enough already, do nothing
+            Balance;
+       true ->
+            %% Get more tokens from the miner.
+            Fee = 1,
+            Incr = NewBalance - Balance + Fee,  %Include the fee
+            {ok,200,_} = post_spend_tx(Pubkey, Incr, Fee),
+            NewBalance
+    end.
+
+assert_balance(Pubkey, ExpectedBalance) ->
+    Address = aec_base58c:encode(account_pubkey, Pubkey),
+    {ok,200,#{<<"balance">> := ExpectedBalance}} = get_balance_at_top(Address).
+    
+%% spend_tokens(SenderPubkey, SenderPrivkey, Recipient, Amount, Fee) ->
+%% spend_tokens(SenderPubkey, SenderPrivkey, Recipient, Amount, Fee, CallerSet) ->
+%%     TxHash
+%%  This is based on post_correct_tx/1 in aehttp_integration_SUITE.
+
+spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee) ->
+    DefaultSet = #{ttl => 0},			%Defaut fields set by caller
+    spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, DefaultSet).
+
+spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
     %% Generate a nonce.
-    {ok,Use} = rpc(aec_next_nonce, pick_for_account, [Sender]),
-    Params = #{sender => Sender, %aec_base58c:encode(account_pubkey, Sender),
-	       recipient => Recip, %aec_base58c:encode(account_pubkey, Recip),
-	       amount => Amount,
-	       fee => Fee,
-	       nonce => Use,
-	       payload => <<"spending">>},
-    {ok, UnsignedTx} = aec_spend_tx:new(Params),
-    {ok,SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
+    {ok,Nonce} = rpc(aec_next_nonce, pick_for_account, [SenderPub]),
+    Params0 = #{sender => SenderPub,
+		recipient => Recip,
+		amount => Amount,
+		fee => Fee,
+		nonce => Nonce,
+		payload => <<"spend tokens">>},
+    Params1 = maps:merge(Params0, CallerSet),	%Set caller defaults
+    {ok, UnsignedTx} = aec_spend_tx:new(Params1),
+    SignedTx = aetx_sign:sign(UnsignedTx, SenderPriv),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     %% Check that we get the correct hash.
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
+    EncodedSerializedTx = aec_base58c:encode(transaction, SerializedTx),
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(EncodedSerializedTx),
     TxHash.
 
 identity_contract(Config) ->
@@ -265,16 +413,15 @@ identity_contract(Config) ->
     %% Create transaction and sign
     {ok, 200, #{<<"tx_hash">> := CtxA}} = sign_and_post_create_tx(APrivkey,
 								  ValidDecoded),
-    
-    ct:pal("Ctx ~p\n", [CtxA]),
+    ct:pal("CtxA ~p\n", [CtxA]),
     
     %% Mine block.
     NodeName = proplists:get_value(node_name, Config),
-    {ok, [_Cblock]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    {ok, [_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
 
-    %% Mine some blocks.
-    aecore_suite_utils:mine_blocks(NodeName, 2),
-    {ok, 200, _} = get_tx(CtxA, json),
+    {ok,200,#{<<"transaction">> := #{<<"block_hash">> := CBlockHash}}} =
+	get_tx(CtxA, json),
+    ct:pal("CBlockHash ~p\n", [CBlockHash]),
 
     %% Call the contract in another transaction.
 
@@ -545,13 +692,6 @@ sign_and_post_call_tx(Privkey, CallDecoded) ->
 %% due to complexity of contract_call_tx (needs a contract in the state tree)
 %% both positive and negative cases are tested in this test
 
-%%
-%% Channels
-%%
-assert_balance(Pubkey, ExpectedBalance) ->
-    Address = aec_base58c:encode(account_pubkey, Pubkey),
-    {ok, 200, #{<<"balance">> := ExpectedBalance}} = get_balance_at_top(Address).
-
 %% ============================================================
 %% HTTP Requests
 %% ============================================================
@@ -564,17 +704,17 @@ get_contract_create(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/create", Data).
 
-get_contract_call(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call", Data).
+%% get_contract_call(Data) ->
+%%     Host = external_address(),
+%%     http_request(Host, post, "tx/contract/call", Data).
 
-get_contract_call_compute(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call/compute", Data).
+%% get_contract_call_compute(Data) ->
+%%     Host = external_address(),
+%%     http_request(Host, post, "tx/contract/call/compute", Data).
 
-get_spend(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/spend", Data).
+%% get_spend(Data) ->
+%%     Host = external_address(),
+%%     http_request(Host, post, "tx/spend", Data).
 
 %% get_name_preclaim(Data) ->
 %%     Host = external_address(),
@@ -624,27 +764,27 @@ get_spend(Data) ->
 %%     Host = external_address(),
 %%     http_request(Host, post, "tx/channel/settle", Data).
 
-get_block_by_height(Height, TxObjects) ->
-    Params = tx_encoding_param(TxObjects),
-    Host = external_address(),
-    http_request(Host, get, "block/height/" ++ integer_to_list(Height), Params).
+%% get_block_by_height(Height, TxObjects) ->
+%%     Params = tx_encoding_param(TxObjects),
+%%     Host = external_address(),
+%%     http_request(Host, get, "block/height/" ++ integer_to_list(Height), Params).
 
-get_block_by_height(Height) ->
-    Host = external_address(),
-    http_request(Host, get, "block/height/" ++ integer_to_list(Height), []).
+%% get_block_by_height(Height) ->
+%%     Host = external_address(),
+%%     http_request(Host, get, "block/height/" ++ integer_to_list(Height), []).
 
-get_block_by_hash(Hash, TxObjects) ->
-    Params = tx_encoding_param(TxObjects),
-    Host = external_address(),
-    http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
+%% get_block_by_hash(Hash, TxObjects) ->
+%%     Params = tx_encoding_param(TxObjects),
+%%     Host = external_address(),
+%%     http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
 
-get_header_by_hash(Hash) ->
-    Host = external_address(),
-    http_request(Host, get, "header-by-hash", [{hash, Hash}]).
+%% get_header_by_hash(Hash) ->
+%%     Host = external_address(),
+%%     http_request(Host, get, "header-by-hash", [{hash, Hash}]).
 
-get_transactions() ->
-    Host = external_address(),
-    http_request(Host, get, "transactions", []).
+%% get_transactions() ->
+%%     Host = external_address(),
+%%     http_request(Host, get, "transactions", []).
 
 get_tx(TxHash, TxEncoding) ->
     Params = tx_encoding_param(TxEncoding),
@@ -652,7 +792,7 @@ get_tx(TxHash, TxEncoding) ->
     http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
 
 post_spend_tx(Recipient, Amount, Fee) ->
-    post_spend_tx(Recipient, Amount, Fee, <<"foo">>).
+    post_spend_tx(Recipient, Amount, Fee, <<"post spend tx">>).
 
 post_spend_tx(Recipient, Amount, Fee, Payload) ->
     Host = internal_address(),
@@ -718,10 +858,10 @@ get_balance(EncodedPubKey, Params) ->
     http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/balance",
                  Params).
 
-get_account_transactions(EncodedPubKey, Params) ->
-    Host = external_address(),
-    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/txs",
-                 Params).
+%% get_account_transactions(EncodedPubKey, Params) ->
+%%     Host = external_address(),
+%%     http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/txs",
+%%                  Params).
 
 %% post_block(Block) ->
 %%     post_block_map(aehttp_api_parser:encode(block, Block)).
@@ -758,10 +898,10 @@ get_miner_pub_key() ->
 %%     Host = internal_address(),
 %%     http_request(Host, get, "block/number", []).
 
-get_internal_block_preset(Segment, TxObjects) ->
-    Params = tx_encoding_param(TxObjects),
-    Host = external_address(),
-    http_request(Host, get, "block/" ++ Segment, Params).
+%% get_internal_block_preset(Segment, TxObjects) ->
+%%     Params = tx_encoding_param(TxObjects),
+%%     Host = external_address(),
+%%     http_request(Host, get, "block/" ++ Segment, Params).
 
 tx_encoding_param(default) -> #{};
 tx_encoding_param(json) -> #{tx_encoding => <<"json">>};
@@ -874,17 +1014,17 @@ internal_address() ->
                 aehttp, [internal, port], 8143]),
     "http://127.0.0.1:" ++ integer_to_list(Port).
 
-ws_host_and_port() ->
-    Port = rpc(aeu_env, user_config_or_env,
-              [ [<<"websocket">>, <<"internal">>, <<"port">>],
-                aehttp, [internal, websocket, port], 8144]),
-    {"127.0.0.1", Port}.
+%% ws_host_and_port() ->
+%%     Port = rpc(aeu_env, user_config_or_env,
+%%               [ [<<"websocket">>, <<"internal">>, <<"port">>],
+%%                 aehttp, [internal, websocket, port], 8144]),
+%%     {"127.0.0.1", Port}.
 
-channel_ws_host_and_port() ->
-    Port = rpc(aeu_env, user_config_or_env,
-              [ [<<"websocket">>, <<"channel">>, <<"port">>],
-                aehttp, [channel, websocket, port], 8045]),
-    {"localhost", Port}.
+%% channel_ws_host_and_port() ->
+%%     Port = rpc(aeu_env, user_config_or_env,
+%%               [ [<<"websocket">>, <<"channel">>, <<"port">>],
+%%                 aehttp, [channel, websocket, port], 8045]),
+%%     {"localhost", Port}.
 
 http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
@@ -956,108 +1096,12 @@ process_http_return(R) ->
             Error
     end.
 
-header_to_endpoint_top(Header) ->
-    {ok, Hash} = aec_headers:hash_header(Header),
-    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
-             aehttp_api_parser:encode(header, Header)).
-
-block_to_endpoint_gossip_map(Block) ->
-    aehttp_api_parser:encode(block, Block).
-
-block_to_endpoint_map(Block) ->
-    block_to_endpoint_map(Block, #{tx_encoding => message_pack}).
-
-block_to_endpoint_map(Block, Options) ->
-    Encoding = maps:get(tx_encoding, Options, message_pack),
-    BMap = aehttp_api_parser:encode_client_readable_block(Block, Encoding),
-    Expected = aehttp_logic:cleanup_genesis(BMap),
-
-    %% Validate that all transactions have the correct block height and hash
-    ExpectedTxs = maps:get(<<"transactions">>, Expected, []),
-    case ExpectedTxs =:= [] of
-        true -> 0 = aec_blocks:height(Block); % only allowed for gen block
-        false -> pass
-    end,
-    BlockHeight = aec_blocks:height(Block),
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    lists:foreach(
-        fun({EncodedTx, SignedTx}) ->
-            #{block_hash := TxBlockHash,
-              block_height := TxBlockHeight,
-              hash := Hash} =
-                  aetx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
-            {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
-            {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
-            TxHash = aetx_sign:hash(SignedTx),
-            {Hash, TxHash} = {TxHash, Hash}
-        end,
-        lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
-    Expected.
-
 random_hash() ->
     HList =
         lists:map(
             fun(_) -> rand:uniform(255) end,
             lists:seq(1, 65)),
     list_to_binary(HList).
-
-prepare_for_spending(BlocksToMine) ->
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToMine),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
-    {ok, 200, _} = get_balance_at_top(), % account present
-    {ok, PubKey} = rpc(aec_keys, pubkey, []),
-    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
-    {PubKey, Nonce}.
-
--spec block_hash_by_height(integer()) -> string().
-block_hash_by_height(Height) ->
-    {ok, B} = rpc(aec_chain, get_block_by_height, [Height]),
-    {ok, HBin} = aec_blocks:hash_internal_representation(B),
-    Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
-    {ok, Hash}.
-
--spec get_pending_block() -> {error, no_candidate}
-                           | {error, not_mining}
-                           | {ok, term()}.
-get_pending_block() ->
-    aec_test_utils:exec_with_timeout(
-        fun TryGetting() ->
-            case rpc(aec_conductor, get_block_candidate, []) of
-                {ok, OK} -> OK;
-                {error, not_mining} = Err->
-                    Err;
-                {error, miner_starting} ->
-                    timer:sleep(10),
-                    TryGetting()
-            end
-        end,
-        10000).
-
-add_spend_txs() ->
-    MineReward = rpc(aec_governance, block_mine_reward, []),
-    MinFee = rpc(aec_governance, minimum_tx_fee, []),
-    %% For now. Mining is severly slowed down by having too many Tx:s in
-    %% the tx pool
-    MaxSpendTxsInBlock = 20,
-    MinimalAmount = 1,
-    MaxTxs = min(MineReward div (MinimalAmount + MinFee), % enough tokens
-                 MaxSpendTxsInBlock), % so it can fit in one block
-    true = MaxTxs > 0,
-    TxsCnt =
-        case MaxTxs of
-            1 -> 1;
-            _ -> rand:uniform(MaxTxs - 1) + 1
-        end,
-    ct:log("adding ~p spend txs", [TxsCnt]),
-    Txs =
-        lists:map(
-            fun(_) ->
-                #{recipient => random_hash(), amount => MinimalAmount, fee => MinFee}
-            end,
-            lists:seq(0, TxsCnt -1)),
-    populate_block(#{spend_txs => Txs}),
-    TxsCnt.
 
 populate_block(Txs) ->
     lists:foreach(
@@ -1066,57 +1110,6 @@ populate_block(Txs) ->
         end,
         maps:get(spend_txs, Txs, [])),
     ok.
-
-give_tokens(RecipientPubkey, Amount) ->
-    MineReward = rpc(aec_governance, block_mine_reward, []),
-    MinFee = rpc(aec_governance, minimum_tx_fee, []),
-    NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   NeededBlocks),
-    SpendData = #{recipient => RecipientPubkey,
-                  amount => Amount,
-                  fee => MinFee},
-    populate_block(#{spend_txs => [SpendData]}),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    ok.
-
-%% %% we don't have any guarantee for the ordering of the txs in the block
-%% equal_block_maps(MapL0, MapR0) ->
-%%     Pop =
-%%       fun(Key, Map0, Default) ->
-%%           Val = maps:get(Key, Map0, Default),
-%%           Map1 = maps:remove(Key, Map0),
-%%           {Val, Map1}
-%%       end,
-%%     {TxsL, MapL1} = Pop(<<"transactions">>, MapL0, []),
-%%     {TxsR, MapR1} = Pop(<<"transactions">>, MapR0, []),
-%%     SortedTxsL = lists:sort(TxsL),
-%%     SortedTxsR = lists:sort(TxsR),
-%%     ct:log("Sorted txs left: ~p", [SortedTxsL]),
-%%     ct:log("Sorted txs right: ~p", [SortedTxsR]),
-%%     MapL1 =:= MapR1 andalso SortedTxsL =:= SortedTxsR.
-
-%% minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
-%%     Fee = rpc(aec_governance, minimum_tx_fee, []),
-%%     MineReward = rpc(aec_governance, block_mine_reward, []),
-%%     TokensRequired = (Amount + Fee) * ChecksCnt,
-%%     BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)),
-%%     {BlocksToMine, Fee}.
-
-%% ws_start_link() ->
-%%     {Host, Port} = ws_host_and_port(),
-%%     ?WS:start_link(Host, Port).
-
-%% channel_ws_start(Role, Opts) ->
-%%     {Host, Port} = channel_ws_host_and_port(),
-%%     ?WS:start_channel(Host, Port, Role, Opts).
-
-%% open_websockets_count() ->
-%%     QueueName = ws_handlers_queue,
-%%     % ensure queue exsits
-%%     true = undefined =/= rpc(jobs, queue_info, [QueueName]),
-%%     length([1 || {_, QName} <- rpc(jobs, info, [monitors]),
-%%                  QName =:= QueueName]).
 
 sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
@@ -1131,15 +1124,6 @@ sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
     %%       end,
     %% {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
     TxHash.
-
-tx_in_mempool_for_account(AccountPubKey, TxHash) ->
-    {ok, 200, #{<<"transactions">> := Txs}} =
-        get_account_transactions(AccountPubKey, tx_encoding_param(json)),
-    lists:any(fun(#{<<"block_hash">> := <<"none">>, <<"hash">> := TxHash1}) ->
-                      TxHash1 =:= TxHash;
-                 (_) ->
-                      false
-              end, Txs).
 
 %% make_params(L) ->
 %%     make_params(L, []).
