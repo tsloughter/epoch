@@ -452,36 +452,40 @@ net_split_recovery(Cfg) ->
     start_node(net1_node2, Cfg),
     start_node(net2_node1, Cfg),
     start_node(net2_node2, Cfg),
+    T1 = erlang:system_time(millisecond),
 
     %% Starts with a net split
 
     wait_for_value({height, Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
 
-    A1 = get_block(net1_node1, Length),
-    A2 = get_block(net1_node2, Length),
-    A3 = get_block(net2_node1, Length),
-    A4 = get_block(net2_node2, Length),
+    try_until(T1 + 2 * ping_interval(),
+            fun() ->
+                B1 = get_block(net1_node1, Length),
+                B2 = get_block(net1_node2, Length),
+                B3 = get_block(net2_node1, Length),
+                B4 = get_block(net2_node2, Length),
 
-    %% Check that the chains are different
-    ?assertEqual(A1, A2),
-    ?assertEqual(A3, A4),
-    ?assertNotEqual(A1, A3),
-    ?assertNotEqual(undefined, A1),
-    ?assertNotEqual(undefined, A3),
+                %% Check that the chains are different
+                ?assertEqual(B1, B2),
+                ?assertEqual(B3, B4),
+                ?assertNotEqual(B1, B3),
+                ?assertNotEqual(undefined, B1),
+                ?assertNotEqual(undefined, B3)
+            end),
 
     %% Join all the nodes
     connect_node(net1_node1, net2, Cfg),
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
-    T0 = erlang:system_time(millisecond),
+    T2 = erlang:system_time(millisecond),
 
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.
     wait_for_value({height, Length * 2}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
 
     %% Wait at least as long as the ping timer can take
-    try_until(T0 + 2 * ping_interval(),
+    try_until(T2 + 2 * ping_interval(),
             fun() ->
 
               B1 = get_block(net1_node1, Length * 2),
@@ -525,11 +529,11 @@ net_split_recovery(Cfg) ->
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
-    T1 = erlang:system_time(millisecond),
+    T3 = erlang:system_time(millisecond),
 
     wait_for_value({height, Top2 + Length * 2}, Nodes, Length * 2 * ?MINING_TIMEOUT, Cfg),
 
-    try_until(T1 + 2 * ping_interval(),
+    try_until(T3 + 2 * ping_interval(),
             fun() ->
               D1 = get_block(net1_node1, Top2 + Length * 2),
               D2 = get_block(net1_node2, Top2 + Length * 2),

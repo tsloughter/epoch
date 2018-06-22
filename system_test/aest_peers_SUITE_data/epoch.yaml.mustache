@@ -7,8 +7,8 @@ peers: {{^peers}}[]{{/peers}}
 
 sync:
     port: {{services.sync.port}}
-    ping_interval: 5000
     single_outbound_per_group: false
+    max_inbound: 2
 
 http:
     external:
@@ -30,7 +30,7 @@ chain:
     persist: true
 
 mining:
-    autostart: {{mining.autostart}}
+    autostart: true
     cuckoo:
         miner:
             executable: mean16s-generic
