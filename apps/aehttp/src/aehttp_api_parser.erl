@@ -95,7 +95,7 @@
                    tx_list => {list, tx},
                    account_balance => [{<<"pub_key">>, account_pubkey}],
                    account_balances => {list, account_balance},
-                   node_version => [{<<"genesis_hash">>, block_hash}],
+                   node_version => [{<<"genesis_hash">>, key_block_hash}],
 
                    oracle => [{<<"address">>, oracle_pubkey}],
                    oracle_list => {list, oracle},

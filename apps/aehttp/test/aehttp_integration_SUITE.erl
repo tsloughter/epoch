@@ -1820,13 +1820,10 @@ version(_Config) ->
     {ok, 200, #{<<"version">> := V,
                 <<"revision">> := Rev,
                 <<"genesis_hash">> := EncodedGH}} = get_version(),
-    V0 = rpc(aeu_info, get_version, []),
-    Rev0 = rpc(aeu_info, get_revision, []),
+    V = rpc(aeu_info, get_version, []),
+    Rev = rpc(aeu_info, get_revision, []),
     GenHash0 = rpc(aec_chain, genesis_hash, []),
-    % asserts
-    V = V0,
-    Rev = Rev0,
-    {block_hash, GenHash0} = aec_base58c:decode(EncodedGH),
+    {ok, GenHash0} = aec_base58c:safe_decode(block_hash, EncodedGH),
     ok.
 
 info_disabled(_Config) ->
