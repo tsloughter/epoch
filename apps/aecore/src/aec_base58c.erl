@@ -42,15 +42,20 @@ decode(Bin) ->
     end.
 
 safe_decode(Type, Enc) ->
-    try decode(Enc) of
-        {Type, Dec} ->
-            {ok, Dec};
-        {_, _} ->
-            {error, invalid_prefix}
+    try {DecodedType, Dec} = decode(Enc),
+        case is_safe_decode_type(Type, DecodedType) of
+            true -> {ok, Dec};
+            false -> {error, invalid_prefix}
+        end
     catch
         error:_ ->
             {error, invalid_encoding}
     end.
+
+is_safe_decode_type(Type, Type) -> true;
+is_safe_decode_type(block_hash, key_block_hash) -> true;
+is_safe_decode_type(block_hash, micro_block_hash) -> true;
+is_safe_decode_type(_, _) -> false.
 
 decode_check(Bin) ->
     Dec = base58_to_binary(Bin),
