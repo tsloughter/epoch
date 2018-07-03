@@ -71,7 +71,7 @@
                                (#{<<"hash">> := <<"mh", _Rest/binary>>} = HMap) ->
                                 case decode(micro_block_map, HMap) of
                                     {ok, Decoded} ->
-                                        {ok, _Header} = aec_headers:deserialize_from_map(Decoded);
+                                        {ok, aec_headers:deserialize_from_map(Decoded)};
                                     Err -> Err
                                 end
                             end},
