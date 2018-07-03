@@ -7,25 +7,43 @@
 
 -include_lib("apps/aecore/include/blocks.hrl").
 
--define(HEADER_OBJ, [{<<"prev_hash">>, block_hash},
-                     {<<"state_hash">>, block_state_hash},
-                     {<<"pow">>, {fun aec_headers:serialize_pow_evidence/1,
-                                    fun(Pow) ->
-                                        {ok, aec_headers:deserialize_pow_evidence(Pow)}
-                                    end}},
-                     {<<"txs_hash">>, block_tx_hash},
-                     {<<"miner">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
-                                    fun decode_miner/1}}]).
--define(OBJECTS, #{header_map => ?HEADER_OBJ,
-                   block_map => [ {<<"transactions">>, {list, tx}} | ?HEADER_OBJ],
+-define(KEY_HEADER_OBJ,
+        %% TODO: we need to get the type of the prev block.
+        [{<<"prev_hash">>, key_block_hash},
+         {<<"state_hash">>, block_state_hash},
+         {<<"pow">>, {fun aec_headers:serialize_pow_evidence/1,
+                      fun(Pow) ->
+                              {ok, aec_headers:deserialize_pow_evidence(Pow)}
+                      end}},
+         {<<"txs_hash">>, block_tx_hash},
+         {<<"miner">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
+                        fun decode_miner/1}}]).
+-define(MICRO_HEADER_OBJ,
+        %% TODO: we need to get the type of the prev block.
+        [{<<"prev_hash">>, micro_block_hash},
+         {<<"state_hash">>, block_state_hash},
+         {<<"txs_hash">>, block_tx_hash}]).
+-define(OBJECTS, #{key_header_map => ?KEY_HEADER_OBJ,
+                   micro_header_map => ?MICRO_HEADER_OBJ,
+                   key_block_map => ?KEY_HEADER_OBJ,
+                   micro_block_map => [{<<"transactions">>, {list, tx}} | ?MICRO_HEADER_OBJ],
                    block => {fun(Block) ->
                                 BMap = aehttp_logic:cleanup_genesis(
                                             aec_blocks:serialize_to_map(Block)),
-                                encode(block_map, BMap)
+                                case aec_blocks:type(Block) of
+                                    key -> encode(key_block_map, BMap);
+                                    micro -> encode(micro_block_map, BMap)
+                                end
                             end,
-                            fun(BMap) ->
+                            fun(#{<<"hash">> := <<"kh", _Rest/binary>>} = BMap) ->
                                 FullBMap = aehttp_logic:add_missing_to_genesis_block(BMap),
-                                case decode(block_map, FullBMap) of
+                                case decode(key_block_map, FullBMap) of
+                                    {ok, Decoded} ->
+                                        {ok, _Block} = aec_blocks:deserialize_from_map(Decoded);
+                                    Err -> Err
+                                end;
+                               (#{<<"hash">> := <<"mh", _Rest/binary>>} = BMap) ->
+                                case decode(micro_block_map, BMap) of
                                     {ok, Decoded} ->
                                         {ok, _Block} = aec_blocks:deserialize_from_map(Decoded);
                                     Err -> Err
@@ -36,18 +54,24 @@
                                     key ->
                                         BMap0 = aec_blocks:serialize_to_map(Block),
                                         BMap = aehttp_logic:cleanup_genesis(BMap0),
-                                        encode(header_map, BMap);
+                                        encode(key_header_map, BMap);
                                     micro ->
                                         {ok, HMap0} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
                                         HMap = HMap0#{<<"signature">> => aec_blocks:signature(Block)},
-                                        encode(header_map, HMap)
+                                        encode(micro_header_map, HMap)
                                 end
                             end,
-                            fun(HMap) ->
+                            fun(#{<<"hash">> := <<"kh", _Rest/binary>>} = HMap) ->
                                 FullHMap = aehttp_logic:add_missing_to_genesis_block(HMap),
-                                case decode(header_map, FullHMap) of
+                                case decode(key_header_map, FullHMap) of
                                     {ok, Decoded} ->
                                         {ok, aec_headers:deserialize_from_map(Decoded)};
+                                    Err -> Err
+                                end;
+                               (#{<<"hash">> := <<"mh", _Rest/binary>>} = HMap) ->
+                                case decode(micro_block_map, HMap) of
+                                    {ok, Decoded} ->
+                                        {ok, _Header} = aec_headers:deserialize_from_map(Decoded);
                                     Err -> Err
                                 end
                             end},

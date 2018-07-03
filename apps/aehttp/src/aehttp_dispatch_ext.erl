@@ -45,7 +45,10 @@
 handle_request('GetTop', _, _Context) ->
     {ok, TopBlock} = aehttp_logic:get_top(),
     {ok, Hash} = aec_blocks:hash_internal_representation(TopBlock),
-    EncodedHash = aec_base58c:encode(block_hash, Hash),
+    EncodedHash = case aec_blocks:type(TopBlock) of
+                      key -> aec_base58c:encode(key_block_hash, Hash);
+                      micro -> aec_base58c:encode(micro_block_hash, Hash)
+                  end,
     EncodedHeader = aehttp_api_parser:encode(header, TopBlock),
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 

@@ -662,7 +662,7 @@ block_not_found_by_hash(_Config) ->
                 fun(Opt) ->
                     H = random_hash(),
                     error = rpc(aec_chain, get_block, [H]),
-                    Hash = aec_base58c:encode(block_hash, H),
+                    Hash = aec_base58c:encode(key_block_hash, H),
                     {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                         = get_block_by_hash(Hash, Opt)
                 end,
@@ -674,7 +674,7 @@ block_not_found_by_hash(_Config) ->
 block_not_found_by_broken_hash(_Config) ->
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(key_block_hash, random_hash()),
             lists:foreach(
                 fun(Opt) ->
                     {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
@@ -1993,10 +1993,13 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             {ok, ExpectedBlock} = GetExpectedBlockFun(Height),
             Specific =
                 fun(DataSchema) ->
-                    {ok, Hash} =
-                        aec_blocks:hash_internal_representation(ExpectedBlock),
+                    {ok, Hash} = aec_blocks:hash_internal_representation(ExpectedBlock),
+                    BlockHashType = case aec_blocks:type(ExpectedBlock) of
+                                        key -> key_block_hash;
+                                        micro -> micro_block_hash
+                                    end,
                     #{<<"data_schema">> => DataSchema,
-                      <<"hash">> => aec_base58c:encode(block_hash, Hash)}
+                      <<"hash">> => aec_base58c:encode(BlockHashType, Hash)}
                 end,
             ExpectedBlockMap = maps:merge(Specific(<<"BlockWithMsgPackTxs">>),
                 block_to_endpoint_map(ExpectedBlock)),
@@ -2141,7 +2144,7 @@ block_txs_count_by_hash_not_found(_Config) ->
         fun(_Height) ->
             H = random_hash(),
             error = rpc(aec_chain, get_block, [H]),
-            Hash = aec_base58c:encode(block_hash, H),
+            Hash = aec_base58c:encode(micro_block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                 = get_block_txs_count_by_hash(Hash)
         end,
@@ -2151,7 +2154,7 @@ block_txs_count_by_hash_not_found(_Config) ->
 block_txs_count_by_broken_hash(_Config) ->
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(micro_block_hash, random_hash()),
             {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
                 get_block_txs_count_by_hash(BrokenHash)
         end,
@@ -2195,8 +2198,8 @@ block_tx_index_not_founds(_Config) ->
           {RandomHeight + 1, 0},
           {RandomHeight + 1, 1}]),
     Test(404, <<"Block not found">>, fun get_block_tx_by_index_hash/3,
-         [{aec_base58c:encode(block_hash, random_hash()), 0},
-          {aec_base58c:encode(block_hash, random_hash()), 1}]),
+         [{aec_base58c:encode(micro_block_hash, random_hash()), 0},
+          {aec_base58c:encode(micro_block_hash, random_hash()), 1}]),
     BlocksToMine = 3,
     lists:foreach(
         fun(Height) ->
@@ -4139,7 +4142,7 @@ process_http_return(R) ->
 
 block_to_endpoint_top(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
+    maps:put(<<"hash">>, aec_base58c:encode(key_block_hash, Hash),
              aehttp_api_parser:encode(header, Block)).
 
 block_to_endpoint_map(Block) ->
@@ -4187,7 +4190,7 @@ prepare_for_spending(BlocksToMine) ->
 block_hash_by_height(Height) ->
     {ok, B} = rpc(aec_chain, get_block_by_height, [Height]),
     {ok, HBin} = aec_blocks:hash_internal_representation(B),
-    Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
+    Hash = binary_to_list(aec_base58c:encode(key_block_hash, HBin)),
     {ok, Hash}.
 
 -spec get_pending_block() -> {error, no_candidate}

@@ -521,7 +521,11 @@ get_block(Fun, Req, DefaultEncoding, AddHash) when is_function(Fun, 0) ->
                         case AddHash of
                             true ->
                                 {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-                                Resp1#{hash => aec_base58c:encode(block_hash, Hash)};
+                                EncodedHash = case aec_blocks:type(Block) of
+                                                  key -> aec_base58c:encode(key_block_hash, Hash);
+                                                  micro -> aec_base58c:encode(micro_block_hash, Hash)
+                                              end,
+                                Resp1#{hash => EncodedHash};
                             false ->
                                 Resp1
                         end,

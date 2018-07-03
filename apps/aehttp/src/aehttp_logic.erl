@@ -235,7 +235,7 @@ empty_fields_in_genesis() ->
 values_for_empty_fields_in_genesis() ->
     true = lists:member(<<"transactions">>, empty_fields_in_genesis()),
     #{<<"prev_hash">> => aec_base58c:encode(
-                           block_hash, aec_block_genesis:prev_hash()),
+                           key_block_hash, aec_block_genesis:prev_hash()),
       <<"pow">> => aec_headers:serialize_pow_evidence(aec_block_genesis:pow()),
       <<"txs_hash">> => aec_base58c:encode(
                           block_tx_hash, aec_block_genesis:txs_hash()),

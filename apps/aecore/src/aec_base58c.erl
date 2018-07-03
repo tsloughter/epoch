@@ -4,7 +4,8 @@
          decode/1,
          safe_decode/2]).
 
--type known_type() :: block_hash
+-type known_type() :: key_block_hash
+                    | micro_block_hash
                     | block_tx_hash
                     | block_state_hash
                     | channel
@@ -73,7 +74,8 @@ check_str(Bin) ->
     C.
 
 
-type2pfx(block_hash)       -> <<"bh">>;
+type2pfx(key_block_hash)   -> <<"kh">>;
+type2pfx(micro_block_hash) -> <<"mh">>;
 type2pfx(block_tx_hash)    -> <<"bx">>;
 type2pfx(block_state_hash) -> <<"bs">>;
 type2pfx(channel)          -> <<"ch">>;
@@ -90,7 +92,8 @@ type2pfx(name)             -> <<"nm">>;
 type2pfx(state)            -> <<"st">>;
 type2pfx(poi)              -> <<"pi">>.
 
-pfx2type(<<"bh">>) -> block_hash;
+pfx2type(<<"kh">>) -> key_block_hash;
+pfx2type(<<"mh">>) -> micro_block_hash;
 pfx2type(<<"bx">>) -> block_tx_hash;
 pfx2type(<<"bs">>) -> block_state_hash;
 pfx2type(<<"ch">>) -> channel;

@@ -182,7 +182,7 @@ serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash0,
                      TxHash) ->
     BlockHash = case BlockHash0 of
                     <<>> -> <<"none">>;
-                    _ -> aec_base58c:encode(block_hash, BlockHash0)
+                    _ -> aec_base58c:encode(micro_block_hash, BlockHash0)
                 end,
     MetaData = [#{<<"block_height">> => BlockHeight},
                 #{<<"block_hash">> => BlockHash},
@@ -198,7 +198,7 @@ serialize_for_client(json, #signed_tx{tx = Tx, signatures = Sigs},
                      BlockHeight, BlockHash0, TxHash) ->
     BlockHash = case BlockHash0 of
                     <<>> -> <<"none">>;
-                    _ -> aec_base58c:encode(block_hash, BlockHash0)
+                    _ -> aec_base58c:encode(micro_block_hash, BlockHash0)
                 end,
     #{<<"tx">> => aetx:serialize_for_client(Tx),
       <<"block_height">> => BlockHeight,
@@ -212,7 +212,7 @@ meta_data_from_client_serialized(message_pack, Bin) ->
     [#{<<"block_height">> := BlockHeight},
      #{<<"block_hash">> := BlockHashEncoded},
      #{<<"hash">> := TxHashEncoded}] = GenericData,
-    {block_hash, BlockHash} = aec_base58c:decode(BlockHashEncoded),
+    {micro_block_hash, BlockHash} = aec_base58c:decode(BlockHashEncoded),
     {tx_hash, TxHash} = aec_base58c:decode(TxHashEncoded),
     #{block_height => BlockHeight,
       block_hash => BlockHash,
@@ -223,7 +223,7 @@ meta_data_from_client_serialized(json, Serialized) ->
       <<"block_hash">> := BlockHashEncoded,
       <<"hash">> := TxHashEncoded,
       <<"signatures">> := _Sigs} = Serialized,
-    {block_hash, BlockHash} = aec_base58c:decode(BlockHashEncoded),
+    {micro_block_hash, BlockHash} = aec_base58c:decode(BlockHashEncoded),
     {tx_hash, TxHash} = aec_base58c:decode(TxHashEncoded),
     #{block_height => BlockHeight,
       block_hash => BlockHash,
