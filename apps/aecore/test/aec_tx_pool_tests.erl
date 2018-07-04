@@ -9,9 +9,12 @@
 
 -define(TAB, aec_tx_pool_test_keys).
 
+-define(BENEFICIARY, <<"ak$tjnw1KcmnwfqXvhtGa9GRjanbHM3t6PmEWEWtNMM3ouvNKRu5">>).
+
 tx_pool_test_() ->
     {foreach,
      fun() ->
+             ok = application:set_env(aecore, beneficiary, ?BENEFICIARY),
              application:ensure_started(gproc),
              ok = application:ensure_started(crypto),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
@@ -27,6 +30,7 @@ tx_pool_test_() ->
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
+             ok = application:unset_env(aecore, beneficiary),
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
              ets:delete(?TAB),

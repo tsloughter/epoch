@@ -220,22 +220,22 @@ sign_and_apply_transaction(Tx, PrivKey, S1, Miner, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Miner, Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     case AcceptedTxs of
         [SignedTx] -> {ok, S2};
         []         -> {error, S2}
     end.
 
-sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner) ->
-    sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, 1).
+sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
+    sign_and_apply_transaction_strict(Tx, PrivKey, S1, 1).
 
 sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, Height) ->
-    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Miner, Trees, Height, ConsensusVersion),
+        aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Height, ConsensusVersion),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
@@ -276,7 +276,7 @@ call_contract_(ContractCallTxGasPrice) ->
     ?assertEqual(1, aect_create_tx:gas_price(aetx:tx(CreateTx))),
 
     %% Test that the create transaction is accepted
-    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2, ?MINER_PUBKEY),
+    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)),
 
     %% Now check that we can call it.

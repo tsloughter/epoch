@@ -294,6 +294,11 @@
                     "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
                     "type" : "integer"
                 },
+                "beneficiary" : {
+                    "description" :
+                    "Defines who will get reward from mining blocks.",
+                    "type" : "string"
+                },
                 "expected_mine_rate" : {
                     "description" : "Expected mine rate (milliseconds) between blocks. Used in governance.",
                     "type" : "integer",
