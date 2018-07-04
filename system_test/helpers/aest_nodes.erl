@@ -134,7 +134,8 @@
     % Public/private peer key can be specified explicity for the node.
     % Both are required and will be saved, overriding any present keys.
     pubkey => binary(),
-    privkey => binary()
+    privkey => binary(),
+    config => #{atom() => term()}
 }.
 
 %=== COMMON TEST API FUNCTIONS =================================================
