@@ -4,13 +4,8 @@ from __future__ import absolute_import
 
 import tempfile
 import os
-import sys
-import unittest
-import datetime
-import time
-import base64
+import shutil
 import logging
-import urlparse
 
 from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
@@ -23,7 +18,6 @@ from nose.tools import assert_equals
 from testconfig import config
 from waiting import wait
 
-import msgpack
 import base58
 import rlp
 
@@ -75,6 +69,8 @@ def setup_node_with_tokens(node, blocks_to_mine):
     # prepare a dir to hold the configs and the keys
     root_dir = tempfile.mkdtemp()
 
+    _copy_sign_keys(root_dir, node)
+
     # setup the dir with mining node
     user_config = make_mining_user_config(root_dir, "epoch.yaml")
     start_node(node, user_config)
@@ -88,6 +84,15 @@ def setup_node_with_tokens(node, blocks_to_mine):
     # Now the node has at least blocks_to_mine blocks mined
 
     return (root_dir, node, api, top)
+
+def _copy_sign_keys(root_dir, keys):
+    # Copy the right keys
+    curr_dir = os.getcwd()
+    key_dir  = os.path.join(root_dir, keys)
+    os.makedirs(key_dir)
+    shutil.copy(os.path.join(curr_dir, "tests", "sign_keys", keys, "sign_key"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "tests", "sign_keys", keys, "sign_key.pub"), key_dir)
+    return key_dir
 
 def install_user_config(root_dir, file_name, conf):
     user_config = os.path.join(root_dir, file_name)
@@ -106,6 +111,7 @@ chain:
 mining:
     autostart: false
     expected_mine_rate: 100
+    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -124,6 +130,7 @@ chain:
 mining:
     autostart: true
     expected_mine_rate: 100
+    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic

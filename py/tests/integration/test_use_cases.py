@@ -3,7 +3,6 @@
 import tempfile
 import os
 import shutil
-import time
 from nose.tools import assert_equals, assert_not_equals, assert_true, with_setup
 import common
 from waiting import wait
@@ -79,6 +78,7 @@ chain:
 mining:
     autostart: true
     expected_mine_rate: 100
+    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -90,6 +90,9 @@ mining:
 chain:
     persist: true
     db_path: \"""" + root_dir + """\"
+
+mining:
+    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
 """
     persistence_mining_user_config = common.install_user_config(root_dir, "p_m_epoch.yaml", p_m_conf)
     only_persistence_user_config = common.install_user_config(root_dir, "p_epoch.yaml", p_conf)
@@ -275,6 +278,7 @@ keys:
 mining:
     autostart: {}
     expected_mine_rate: 100
+    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -304,6 +308,7 @@ chain:
 mining:
     autostart: true
     expected_mine_rate: 100
+    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -333,6 +338,7 @@ chain:
 mining:
     autostart: false
     expected_mine_rate: 100
+    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
