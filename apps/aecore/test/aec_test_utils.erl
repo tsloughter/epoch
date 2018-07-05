@@ -38,6 +38,7 @@
         , preset_accounts/0
         , genesis_accounts_balances/1
         , create_keyblock_with_state/2
+        , create_keyblock_with_state/3
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
