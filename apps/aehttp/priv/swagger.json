@@ -2724,10 +2724,14 @@
         },
         "miner" : {
           "$ref" : "#/definitions/EncodedHash"
+        },
+        "beneficiary" : {
+          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
         "txs_hash" : null,
+        "beneficiary" : null,
         "state_hash" : null,
         "prev_hash" : { },
         "pow" : "",
