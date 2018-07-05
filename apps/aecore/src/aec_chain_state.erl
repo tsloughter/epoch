@@ -161,7 +161,6 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 
 -record(node, { header  :: #header{}
               , hash    :: binary()
-              , height  :: non_neg_integer()
               , type    :: block_type()
               , key_hash :: binary()
               }).
@@ -170,7 +169,7 @@ hash(#node{hash = Hash}) -> Hash.
 
 prev_hash(#node{header = H}) -> aec_headers:prev_hash(H).
 
-node_height(#node{height = Height}) -> Height.
+node_height(#node{header = H}) -> aec_headers:height(H).
 
 node_version(#node{header = H}) -> aec_headers:version(H).
 
@@ -226,7 +225,6 @@ wrap_block(Block) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     #node{ header = Header
          , hash = Hash
-         , height = aec_headers:height(Header)
          , type = aec_blocks:type(Block)
          , key_hash = aec_headers:key_hash(Header)
          }.
@@ -246,7 +244,6 @@ wrap_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     #node{ header = Header
          , hash = Hash
-         , height = aec_headers:height(Header)
          , type = aec_headers:type(Header)
          , key_hash = aec_headers:key_hash(Header)
          }.
@@ -310,10 +307,9 @@ internal_insert(Node, Block) ->
                           %% adding to avoid giving spurious error
                           %% messages.
                           State1 = State#{ currently_adding => hash(Node)},
-                          Node1 = set_height(Node),
-                          assert_not_new_genesis(Node1, State1),
-                          ok = db_put_node(Block, hash(Node1)),
-                          State2 = update_state_tree(Node1, maybe_add_genesis_hash(State1, Node1)),
+                          assert_not_new_genesis(Node, State1),
+                          ok = db_put_node(Block, hash(Node)),
+                          State2 = update_state_tree(Node, maybe_add_genesis_hash(State1, Node)),
                           persist_state(State2),
                           ok
                   end,
@@ -862,12 +858,3 @@ db_node_has_sibling_blocks(Node) ->
                      ++ aec_db:find_headers_at_height(Height - 1),
                  aec_headers:prev_hash(Header) =:= PrevHash]) > 1.
 
-%%% TODO: fix NG-genesis flow
-set_height(#node{type = micro, key_hash = KeyHash} = Node) ->
-    Height = case aec_db:get_header(KeyHash) of
-                [] -> error({key_hash_not_found, KeyHash});
-                Header -> aec_headers:height(Header)
-             end,
-    Node#node{height = Height};
-set_height(Node) ->
-    Node.

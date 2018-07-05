@@ -31,7 +31,8 @@ new_key_block_test_() ->
                           aec_blocks:prev_hash(NewBlock)),
              ?assertEqual([], NewBlock#block.txs),
              ?assertEqual(17, NewBlock#block.target),
-             ?assertEqual(?GENESIS_VERSION, NewBlock#block.version)
+             ?assertEqual(?GENESIS_VERSION, NewBlock#block.version),
+             ?assertEqual(?MINER_PUBKEY, NewBlock#block.beneficiary)
      end}.
 
 -endif.

@@ -5,7 +5,8 @@
 -module(aec_blocks).
 
 %% API
--export([prev_hash/1,
+-export([beneficiary/1,
+         prev_hash/1,
          height/1,
          miner/1,
          target/1,
@@ -49,6 +50,10 @@
 -type block() :: #block{}.
 -type height() :: non_neg_integer().
 -export_type([block/0, block_header_hash/0, height/0]).
+
+-spec beneficiary(block()) -> aec_keys:pubkey().
+beneficiary(Block) ->
+    Block#block.beneficiary.
 
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->

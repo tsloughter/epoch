@@ -95,19 +95,19 @@ create_contract_negative(_Cfg) ->
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
-    {error, S1} = sign_and_apply_transaction(RTx1, BadPrivKey, S1, ?MINER_PUBKEY),
+    {error, S1} = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
     {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
-    {error, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2, ?MINER_PUBKEY),
+    {error, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2),
     {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
-    {error, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1, ?MINER_PUBKEY),
+    {error, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     ok.
@@ -123,7 +123,7 @@ create_contract_init_error(_Cfg) ->
     Tx = aect_test_utils:create_tx(PubKey, Overrides, S1),
 
     %% Test that the create transaction is accepted
-    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
+    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Check that the contract is not created
     ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
     {none, _} = lookup_contract_by_id(ContractKey, S2),
@@ -171,7 +171,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     ?assertEqual(ContractCreateTxGasPrice, aect_create_tx:gas_price(aetx:tx(Tx))),
 
     %% Test that the create transaction is accepted
-    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
+    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Check that the contract is created
     ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
     {{value, Contract}, _} = lookup_contract_by_id(ContractKey, S2),
@@ -213,10 +213,10 @@ create_contract_(ContractCreateTxGasPrice) ->
 
     ok.
 
-sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
-    sign_and_apply_transaction(Tx, PrivKey, S1, Miner, 1).
+sign_and_apply_transaction(Tx, PrivKey, S1) ->
+    sign_and_apply_transaction(Tx, PrivKey, S1, 1).
 
-sign_and_apply_transaction(Tx, PrivKey, S1, Miner, Height) ->
+sign_and_apply_transaction(Tx, PrivKey, S1, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     {ok, AcceptedTxs, Trees1} =
@@ -230,8 +230,8 @@ sign_and_apply_transaction(Tx, PrivKey, S1, Miner, Height) ->
 sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
     sign_and_apply_transaction_strict(Tx, PrivKey, S1, 1).
 
-sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, Height) ->
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     {ok, AcceptedTxs, Trees1} =
@@ -290,7 +290,7 @@ call_contract_(ContractCallTxGasPrice) ->
                                        amount    => Value,
                                        fee       => Fee}, S3),
     ?assertEqual(ContractCallTxGasPrice, aect_call_tx:gas_price(aetx:tx(CallTx))),
-    {ok, S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3, ?MINER_PUBKEY),
+    {ok, S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3),
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
     %% Check that it got stored and that we got the right return value
@@ -424,7 +424,7 @@ create_contract(Owner, Name, Args, Options, S) ->
                      , gas        => 10000 }, maps:remove(height, Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Owner, S),
-    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     {ContractKey, S1}.
 
@@ -445,7 +445,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                  }, maps:remove(height, Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
-    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, Height),
     CallKey  = aect_call:id(Caller, Nonce, ContractKey),
     CallTree = aect_test_utils:calls(S1),
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
@@ -833,7 +833,7 @@ aens_preclaim(PubKey, Name, Options, S) ->
                                        fee => Fee,
                                        ttl => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {Salt, S1}.
 
 aens_claim(PubKey, Name, Salt, S) ->
@@ -853,7 +853,7 @@ aens_claim(PubKey, Name, Salt, Options, S) ->
                                     fee       => Fee,
                                     ttl       => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {NameHash, S1}.
 
 aens_revoke(PubKey, Hash, S) ->
@@ -870,7 +870,7 @@ aens_revoke(PubKey, Hash, Options, S) ->
                                      fee       => Fee,
                                      ttl       => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {ok, S1}.
 
 aens_update(PubKey, NameHash, Pointers, S) ->
@@ -892,7 +892,7 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
                                       fee        => Fee,
                                       ttl        => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
-    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {ok, S1}.
 
 sophia_aens(_Cfg) ->
