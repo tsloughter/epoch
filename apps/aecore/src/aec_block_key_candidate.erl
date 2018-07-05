@@ -6,7 +6,7 @@
 %%%=============================================================================
 -module(aec_block_key_candidate).
 
--export([ create/1
+-export([ create/2
         ]).
 
 -ifdef(TEST).
@@ -16,18 +16,19 @@
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------
--spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
+-spec create(aec_blocks:block() | aec_blocks:block_header_hash(),
+             aec_keys:pubkey()) ->
                     {ok, aec_blocks:block()} | {error, term()}.
-create(BlockHash) when is_binary(BlockHash) ->
+create(BlockHash, Beneficiary) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
-            int_create(BlockHash, Block);
+            int_create(BlockHash, Block, Beneficiary);
         error ->
             {error, block_not_found}
     end;
-create(Block) ->
+create(Block, Beneficiary) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    int_create(BlockHash, Block).
+    int_create(BlockHash, Block, Beneficiary).
 
 -spec adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
                            {ok, aec_blocks:block()} | {error, term()}.
@@ -48,29 +49,24 @@ adjust_target(Block, AdjHeaders) ->
 
 %% -- Internal functions -----------------------------------------------------
 
-int_create(BlockHash, Block) ->
+int_create(BlockHash, Block, Beneficiary) ->
     N = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_blocks:height(Block) < N of
         true  ->
-            int_create(BlockHash, Block, []);
+            int_create(BlockHash, Block, Beneficiary, []);
         false ->
             case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
                 {ok, Headers} ->
-                    int_create(BlockHash, Block, Headers);
+                    int_create(BlockHash, Block, Beneficiary, Headers);
                 error ->
                     {error, headers_for_target_adjustment_not_found}
             end
     end.
 
-int_create(BlockHash, Block, AdjChain) ->
+int_create(BlockHash, Block, Beneficiary, AdjChain) ->
     case aec_keys:pubkey() of
         {ok, Miner} ->
-            case beneficiary() of
-                {ok, Beneficiary} ->
-                    int_create(BlockHash, Block, Miner, Beneficiary, AdjChain);
-                {error, _} = Error ->
-                    Error
-            end;
+            int_create(BlockHash, Block, Miner, Beneficiary, AdjChain);
         {error, _} = Error ->
             Error
     end.
@@ -100,16 +96,3 @@ int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees) ->
     aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees),
                        aec_blocks:target(PrevBlock),
                        0, aeu_time:now_in_msecs(), Version, Miner, Beneficiary).
-
-beneficiary() ->
-    case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
-        {ok, EncodedBeneficiary} ->
-            case aec_base58c:safe_decode(account_pubkey, EncodedBeneficiary) of
-                {ok, _Beneficiary} = Result ->
-                    Result;
-                {error, Reason} ->
-                    {error, {beneficiary_error, Reason}}
-            end;
-        undefined ->
-            {error, beneficiary_not_configured}
-    end.
