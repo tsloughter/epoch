@@ -303,7 +303,7 @@ keys:
 
 chain:
     hard_forks:
-        "16": 0
+        "17": 0
 
 mining:
     autostart: true
@@ -333,7 +333,7 @@ keys:
 
 chain:
     hard_forks:
-        "16": 0
+        "17": 0
 
 mining:
     autostart: false
