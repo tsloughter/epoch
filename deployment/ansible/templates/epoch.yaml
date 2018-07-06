@@ -2,17 +2,10 @@
 sync:
     port: {{ config.sync.port }}
 
-{% if configure_peers|default(true) %}
 peers:
-{% for host in groups[hosts_group] | difference([inventory_hostname]) %}
-{% set public_ip = hostvars[host]['ansible_ssh_host']|default(hostvars[host]['ansible_host']) -%}
-{% if hostvars[host]['ansible_local']['epoch']['peer_key'] %}
-    - "aenode://{{ hostvars[host]['ansible_local']['epoch']['peer_key'] }}@{{ public_ip }}:{{ config.sync.port }}"
-{% else %}
-    - "aenode://pp$nokeyfoundpeerwillbeignored@{{ public_ip }}:{{ config.sync.port }}"
-{% endif %}
-{% endfor %}
-{% endif %}
+    - "aenode://pp$2CL6TSL9Lgfz63P8n4juyNcaw4RDzKzvaPKvKHBnwMerkPBW3n@35.156.63.78:3015"
+    - "aenode://pp$JF7parbPeVo5qyg3oUJerRHGDCL5Qym6nXJ1ZrMpenXgNaDVJ@54.202.138.99:3015"
+    - "aenode://pp$6hTca1U9VtgLh6ZxcsEzVNxV4vVPMRGKzsS9w1yJaHgufJvaz@52.221.60.178:3015"
 
 keys:
     dir: {{ config.keypair.dir }}
@@ -22,9 +15,9 @@ http:
     external:
         port: {{ config.http.external.port }}
     internal:
-        listen_address: {{ config.http.internal.listen_address }}
+        listen_address: 0.0.0.0
         port: {{ config.http.internal.port }}
-    debug: {{ config.http.debug | bool | lower }}
+    debug: true
 
 websocket:
     internal:
