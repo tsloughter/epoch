@@ -296,7 +296,7 @@
                 },
                 "beneficiary" : {
                     "description" :
-                    "Defines who will get reward from mining blocks.",
+                    "Public key of beneficiary account that will receive fees from mining on a node.",
                     "type" : "string"
                 },
                 "expected_mine_rate" : {
