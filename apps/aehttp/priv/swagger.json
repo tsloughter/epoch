@@ -215,7 +215,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/#definitions/MicroBlockHeader"
+              "$ref" : "#/definitions/MicroBlockHeader"
             }
           },
           "400" : {
