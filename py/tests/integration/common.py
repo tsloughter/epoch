@@ -69,10 +69,10 @@ def setup_node_with_tokens(node, blocks_to_mine):
     # prepare a dir to hold the configs and the keys
     root_dir = tempfile.mkdtemp()
 
-    _copy_sign_keys(root_dir, node)
+    key_dir = _copy_sign_keys(root_dir, node)
 
     # setup the dir with mining node
-    user_config = make_mining_user_config(root_dir, "epoch.yaml")
+    user_config = make_mining_user_config(root_dir, key_dir, "epoch.yaml")
     start_node(node, user_config)
     api = external_api(node)
 
@@ -120,23 +120,26 @@ mining:
 """
     return install_user_config(root_dir, file_name, conf)
 
-def make_mining_user_config(root_dir, file_name):
+def make_mining_user_config(root_dir, key_dir, file_name):
     conf = """\
 ---
 chain:
     hard_forks:
         "17": 0
+keys:
+    dir: "{}"
 
 mining:
     autostart: true
     expected_mine_rate: 100
-    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    # Beneficiary matches pubkey from sign_keys/dev1/sign_key.pub
+    beneficiary: "ak$28qVPdhuiaKZTtSgqovgLCvHDZoLxv8PpdVy1cfcAo71Uw5Nva"
     cuckoo:
         miner:
             executable: mean16s-generic
             extra_args: "-t 5"
             node_bits: 16
-"""
+""".format(key_dir)
     return install_user_config(root_dir, file_name, conf)
 
 def start_node(name, config_filename=None):
